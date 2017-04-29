@@ -15,14 +15,16 @@
     - [Environment Variables](#environment-variables-2)   
     - [Volume](#volume-2)
     - [Links](#links-1)
-    - [Client](#client)
-- [More](#more)
-    - [Port Forwarding](#port-forwarding)
+- [HTTPS](#https)
+    - [Reverse Proxy](#reverse-proxy)
+    - [Certificate](#certificate)
+- [Port Forwarding](#port-forwarding)
+
 
 ## Introduction
 
 This tutorial explains how to install a complete GitLab environment, including GitLab Runner and GitLab Container Registry, with the Synology DiskStation Manager (DSM).
-Each GitLab module can be installed with the help of Docker container.
+Each GitLab module can be installed with the help of Docker container and will receive it's own subdomain.
 
 ## sameersbn/docker-gitlab
 
@@ -30,8 +32,8 @@ GitLab itself can be installed via the Package Center. The package is called **D
 Because it is maintained by Synology itself, it should install without any problem.
 If they are not already installed, this package will also install the Docker package as well as the MariaDB package.
 If the Docker package was not installed before, a shared folder has to be created for it. In this tutorial the shared folder is called `/docker`.
-Once the installation is finished, stop the newly installed package through the Package Center.
-This will make the Docker environment variables, port settings, volume mounts and links of the newly created Docker containers editable.
+Once the installation is finished, stop the newly installed package with the help of the Package Center.
+This will make the Docker environment variables, port settings, volume mounts and links of the Docker containers editable.
 Now open the Docker package and start editing the **synology_gitlab** container.
 
 ### Environment Variables
@@ -43,8 +45,8 @@ Now open the Docker package and start editing the **synology_gitlab** container.
 | GITLAB_REGISTRY_KEY_PATH | /certs/registry-auth.key |
 | GITLAB_REGISTRY_CERT_PATH | /certs/registry-auth.crt |
 | GITLAB_REGISTRY_API_URL | http://registry:5555 |
-| GITLAB_REGISTRY_PORT | 5555 |
-| GITLAB_REGISTRY_HOST | your_diskstation_url.com |
+| GITLAB_REGISTRY_PORT | 443 |
+| GITLAB_REGISTRY_HOST | hub.your_diskstation_url.com |
 | GITLAB_REGISTRY_ENABLED | true |
 | IMAP_ENABLED | true |
 | IMAP_HOST | imap.gmail.com |
@@ -56,10 +58,10 @@ Now open the Docker package and start editing the **synology_gitlab** container.
 | OAUTH_GITHUB_APP_KEY | your_github_app_key |
 | OAUTH_BITBUCKET_APP_SECRET | your_bitbucket_app_secret |
 | OAUTH_BITBUCKET_APP_KEY | your_bitbucket_app_key |
-| GITLAB_HOST | your_diskstation_url.com |
-| GITLAB_PORT | 30000 |
+| GITLAB_HOST | git.your_diskstation_url.com |
+| GITLAB_PORT | 443 |
 | GITLAB_SSH_PORT | 30001 |
-| GITLAB_EMAIL | your_notification_email_address |
+| GITLAB_EMAIL | your_notification@email_address.com |
 | DB_TYPE | mysql |
 | DB_HOST | 172.17.0.1 |
 | DB_NAME | gitlab |
@@ -98,7 +100,7 @@ Now open the Docker package and start editing the **synology_gitlab** container.
 
 ### Update Warning
 
-**An update of the Docker GitLab package will revert all settings changed made to this container.**
+An update of the Docker GitLab package will revert all environment variable, volume mount, port and link changes made to the **synology_gitlab** and **synology_redis** container.
 
 ## sameersbn/gitlab-ci-multi-runner
 
@@ -119,7 +121,7 @@ While doing so configure the environment variables and volumes within the advanc
 | RUNNER_EXECUTOR | shell |
 | RUNNER_DESCRIPTION | GitLabRunner |
 | RUNNER_TOKEN | your_gitlab_runner_token |
-| CI_SERVER_URL | http://your_diskstation_url.com:30000/ci |
+| CI_SERVER_URL | https://git.your_diskstation_url.com:443/ci |
 
 ### Volume
 
@@ -164,7 +166,7 @@ cd /docker/gitlab_registry/certs
 ```
 2. Generate a private key and sign request for the private key.
 ```
-openssl req -nodes -newkey rsa:4096 -keyout registry-auth.key -out registry-auth.csr -subj "/CN=your_diskstation_url.com"
+openssl req -nodes -newkey rsa:4096 -keyout registry-auth.key -out registry-auth.csr -subj "/CN=hub.your_diskstation_url.com"
 ```
 3. Sign your created privated key.
 ```
@@ -181,7 +183,7 @@ After that open the Docker package, launch a **registry** container and configur
 | REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE | /certs/registry-auth.crt |
 | REGISTRY_AUTH_TOKEN_ISSUER | gitlab-issuer |
 | REGISTRY_AUTH_TOKEN_SERVICE | container_registry |
-| REGISTRY_AUTH_TOKEN_REALM | http:/your_diskstation_url.com:30000/jwt/auth |
+| REGISTRY_AUTH_TOKEN_REALM | https://git.your_diskstation_url.com:443/jwt/auth |
 | REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY | /registry |
 | REGISTRY_LOG_LEVEL | info |
 
@@ -198,26 +200,30 @@ After that open the Docker package, launch a **registry** container and configur
 | ---------- | -------------- | ---- |
 | 5555 | 5000 | tcp |
 
-### Client
+## HTTPS
 
-To allow connetions from clients to the newly setup docker registry, add the newly setup GitLab Container Registry to list of **Insecure Registries**.
-```
-{
-  "insecure-registries" : [
-    "your_diskstation_url.com:5555"
-  ]
-}
-```
+Synology's Reverse Proxy service and *Let's Encrypt* can be used to secure the connction to GitLab and the registry Docker over HTTPS.
 
-## More
+### Reverse Proxy
 
-### Port Forwarding
+Create two new rules like the following:
 
-If GitLab is running behind a firewall, for example behind a router, port forwarding need to be configured.
+| Description | Source Protocol | Source Hostname | Source Port | Destination Protocol | Destination Hostname | Destination Port |
+| ----------- | --------------- | --------------- | ----------- | -------------------- | -------------------- | ---------------- |
+| GitLab | HTTPS | git.your_diskstation_url.com | 443 | HTTP | localhost | 30000 |
+| GitLab Registry | HTTPS | hub.your_diskstation_url.com | 443 | HTTP | localhost | 5555 |
+
+### Certificate
+
+If you don't have already a certificate, create a *Let's Encrypt* certificate with the domain name **your_diskstation_url.com** and alternative names **git.your_diskstation_url.com;hub.your_diskstation_url.com** in the Certificate section.
+After that configure them to be used for the services **git.your_diskstation_url.com** and **hub.your_diskstation_url.com**.
+
+## Port Forwarding
+
+If GitLab is running behind a firewall, for example behind a router, port forwarding need to be configured inside the router.
 
 | Service | Port | Protocol |
 | ------- | ---- | -------- |
-| GitLab HTTP | 30000 | tcp |
+| GitLab HTTP | 80 | tcp |
+| GitLab HTTPS | 443 | tcp |
 | GitLab SSH | 30001 | tcp |
-| GitLab Registry | 5555 | tcp |
-
