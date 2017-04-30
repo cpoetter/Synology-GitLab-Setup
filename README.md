@@ -14,6 +14,7 @@
 - [GitLab Container Registry](#registry)
     - [Environment Variables](#environment-variables-2)   
     - [Volume](#volume-2)
+    - [Port Settings](#port-settings-1)
     - [Links](#links-1)
 - [HTTPS](#https)
     - [Reverse Proxy](#reverse-proxy)
@@ -40,11 +41,12 @@ Now open the Docker package and start editing the **synology_gitlab** container.
 
 | Environment Variable | Value |
 | -------------------- | ----- |
+| GITLAB_REGISTRY_ISSUER | gitlab-issuer |
 | SSL_REGISTRY_CERT_PATH | /certs/registry.crt |
 | SSL_REGISTRY_KEY_PATH | /certs/registry.key |
 | GITLAB_REGISTRY_KEY_PATH | /certs/registry-auth.key |
 | GITLAB_REGISTRY_CERT_PATH | /certs/registry-auth.crt |
-| GITLAB_REGISTRY_API_URL | http://registry:5555 |
+| GITLAB_REGISTRY_API_URL | http://registry:5000 |
 | GITLAB_REGISTRY_PORT | 443 |
 | GITLAB_REGISTRY_HOST | hub.your_diskstation_url.com |
 | GITLAB_REGISTRY_ENABLED | true |
@@ -97,6 +99,7 @@ Now open the Docker package and start editing the **synology_gitlab** container.
 | Container Name | Alias |
 | -------------- | ----- |
 | synology_gitlab_redis | redisio |
+| gitlab_registry | registry |
 
 ### Update Warning
 
@@ -158,7 +161,7 @@ Open File Station and create the following folders:
  - `/docker/gitlab_registry/registry`
  - `/docker/gitlab_registry/certs`
 
-Next a self signed certificate will be created with OpenSSL. To do so SSH into your Synology DiskStation.
+Next two self signed certificates will be created with OpenSSL. To do so SSH into your Synology DiskStation.
 
 1. Open the certificate folder.
 ```
@@ -166,11 +169,13 @@ cd /docker/gitlab_registry/certs
 ```
 2. Generate a private key and sign request for the private key.
 ```
-openssl req -nodes -newkey rsa:4096 -keyout registry-auth.key -out registry-auth.csr -subj "/CN=hub.your_diskstation_url.com"
+openssl req -nodes -newkey rsa:4096 -keyout registry-auth.key -out registry-auth.csr -subj "/CN=gitlab-issuer"
+openssl req -nodes -newkey rsa:4096 -keyout registry.key -out registry.csr -subj "/CN=git.your_diskstation_url.com"
 ```
 3. Sign your created privated key.
 ```
 openssl x509 -in registry-auth.csr -out registry-auth.crt -req -signkey registry-auth.key -days 3650
+openssl x509 -in registry.csr -out registry.crt -req -signkey registry.key -days 3650
 ```
 
 After that open the Docker package, launch a **registry** container and configure the environment variables, volume mounts and and links like explained below.
@@ -179,6 +184,9 @@ After that open the Docker package, launch a **registry** container and configur
 
 | Environment Variable | Value |
 | -------------------- | ----- |
+| REGISTRY_AUTH | token |
+| REGISTRY_STORAGE_CACHE_BLOBDESCRIPTOR | redis |
+| REGISTRY_REDIS_ADDR | redis:6379 |
 | REGISTRY_STORAGE_DELETE_ENABLED | true |
 | REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE | /certs/registry-auth.crt |
 | REGISTRY_AUTH_TOKEN_ISSUER | gitlab-issuer |
@@ -194,11 +202,17 @@ After that open the Docker package, launch a **registry** container and configur
 | /docker/gitlab_registry/certs | /certs | rw |
 | /docker/gitlab_registry/registry | /registry | rw |
 
-### Links
+### Port Settings
 
 | Local Port | Container Port | Type |
 | ---------- | -------------- | ---- |
 | 5555 | 5000 | tcp |
+
+### Links
+
+| Container Name | Alias |
+| -------------- | ----- |
+| synology_gitlab_redis | redis |
 
 ## HTTPS
 
@@ -215,7 +229,7 @@ Create two new rules like the following:
 
 ### Certificate
 
-If you don't have already a certificate, create a *Let's Encrypt* certificate with the domain name **your_diskstation_url.com** and alternative names **git.your_diskstation_url.com;hub.your_diskstation_url.com** in the Certificate section.
+If you don't already have a certificate, create a *Let's Encrypt* certificate with the domain name **your_diskstation_url.com** and alternative names **git.your_diskstation_url.com;hub.your_diskstation_url.com** in the Certificate section.
 After that configure them to be used for the services **git.your_diskstation_url.com** and **hub.your_diskstation_url.com**.
 
 ## Port Forwarding
