@@ -35,7 +35,7 @@ If they are not already installed, this package will also install the Docker pac
 If the Docker package was not installed before, a shared folder has to be created for it. In this tutorial the shared folder is called `/docker`.
 Once the installation is finished, stop the newly installed package with the help of the Package Center.
 This will make the Docker environment variables, port settings, volume mounts and links of the Docker containers editable.
-Now open the Docker package and start editing the **synology_gitlab** container.
+Now open the Docker package, go in the **Container** section, right click on the **synology_gitlab** container and select **Edit** (not shown if there are running instances of this container).
 
 ### Environment Variables
 
